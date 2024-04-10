@@ -44,12 +44,21 @@ CONSOLE_LOG = """
 """
 
 
-CONSOLE_PTY = """
+DEFAULT_CONSOLE_PTY = """
     <serial type='pty'>
       <target port='0'/>
     </serial>
     <console type='pty'>
       <target type='serial' port='0'/>
+    </console>
+"""
+
+ARM64_CONSOLE_PTY = """
+    <serial type='pty'>
+        <target port='0'/>
+    </serial>
+    <console type='pty'>
+        <target type='virtio' port='0'/>
     </console>
 """
 
@@ -63,9 +72,9 @@ def main():
                         help='Use a custom image file (must be qcow2).')
     parser.add_argument('--engine', default='qemu',
                         help='The virtualization engine to use')
-    parser.add_argument('--arch', default='i686',
+    parser.add_argument('--arch', default='aarch64',
                         help='The architecture to use')
-    parser.add_argument('--machine_type', default='q35',
+    parser.add_argument('--machine_type', default='virt-2.12',
                         help='Machine type based on architecture')
     parser.add_argument('--memory', default='2097152',
                         help="Maximum memory for the VM in KB.")
@@ -132,10 +141,14 @@ def main():
         else:
             raise RuntimeError("Unable to find location of kvm executable")
 
-    if args.console_log:
-        params['console'] = CONSOLE_LOG % {'console_log': args.console_log}
+    if args.arch == 'aarch64':
+        params['console'] = ARM64_CONSOLE_PTY
     else:
-        params['console'] = CONSOLE_PTY
+        if args.console_log:
+            params['console'] = CONSOLE_LOG % {'console_log': args.console_log}
+        else:
+            params['console'] = DEFAULT_CONSOLE_PTY
+
     libvirt_template = template.render(**params)
     conn = libvirt.open("qemu:///system")
 

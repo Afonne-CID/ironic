@@ -260,7 +260,11 @@ if [[ "$IRONIC_VM_ENGINE" == "auto" ]]; then
         echo "WARNING: Switching to QEMU"
         IRONIC_VM_ENGINE=qemu
         if [[ -z "$IRONIC_VM_EMULATOR" ]]; then
-            IRONIC_VM_EMULATOR='/usr/bin/qemu-system-x86_64'
+            if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+                IRONIC_VM_EMULATOR='/usr/bin/qemu-system-aarch64'
+            else
+                IRONIC_VM_EMULATOR='/usr/bin/qemu-system-x86_64'
+            fi
         fi
     else
         IRONIC_VM_ENGINE=kvm
@@ -658,13 +662,24 @@ IRONIC_UEFI_FILES_DIR=${IRONIC_UEFI_FILES_DIR:-/var/lib/libvirt/images}
 UEFI_LOADER_PATH=$IRONIC_UEFI_FILES_DIR/OVMF_CODE.fd
 UEFI_NVRAM_PATH=$IRONIC_UEFI_FILES_DIR/OVMF_VARS.fd
 
+if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+    UEFI_LOADER_PATH=$IRONIC_UEFI_FILES_DIR/AAVMF_CODE.fd
+    UEFI_NVRAM_PATH=$IRONIC_UEFI_FILES_DIR/AAVMF_VARS.fd
+fi
+
 # Handle architecture specific package installs
-if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
-    install_package shim
-    if is_ubuntu; then
+if is_ubuntu; then
+    if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
+        install_package shim
         install_package grub-efi-amd64-signed shim-signed
-    elif is_fedora; then
+    elif [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+        install_package qemu-system-arm qemu-efi qemu-efi-aarch64 shim-signed
+    fi
+elif is_fedora; then
+    if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
         install_package grub2 grub2-efi
+    elif [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+        install_package grub2-arm64-efi
     fi
 fi
 
@@ -678,14 +693,34 @@ if [[ "$IRONIC_BOOT_MODE" == "uefi" ]]; then
         die $LINENO "Boot mode UEFI only works in Ubuntu or Fedora for now."
     fi
 
-    if is_ubuntu && [[ -z $IRONIC_GRUB2_FILE ]]; then
-        IRONIC_GRUB2_SHIM_FILE=/usr/lib/shim/shimx64.efi.signed
-        IRONIC_GRUB2_FILE=/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed
-        IRONIC_GRUB2_NETWORK_FILE=/usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed
-    elif is_fedora && [[ -z $IRONIC_GRUB2_FILE ]]; then
-        IRONIC_GRUB2_SHIM_FILE=/boot/efi/EFI/fedora/shimx64.efi
-        IRONIC_GRUB2_FILE=/boot/efi/EFI/fedora/grubx64.efi
-        IRONIC_GRUB2_NETWORK_FILE=/boot/efi/EFI/fedora/grubx64.efi
+    if is_ubuntu; then
+        if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
+            if [[ -z $IRONIC_GRUB2_FILE ]]; then
+                IRONIC_GRUB2_SHIM_FILE=/usr/lib/shim/shimx64.efi.signed
+                IRONIC_GRUB2_FILE=/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed
+                IRONIC_GRUB2_NETWORK_FILE=/usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed
+            fi
+        # elif [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+        #     if [[ -z $IRONIC_GRUB2_FILE ]]; then
+        #         IRONIC_GRUB2_SHIM_FILE=/usr/lib/shim/shimaa64.efi.signed
+        #         IRONIC_GRUB2_FILE=/usr/lib/grub/arm64-efi-signed/grubaa64.efi.signed
+        #         IRONIC_GRUB2_NETWORK_FILE=/usr/lib/grub/arm64-efi-signed/grubnetaa64.efi.signed
+        #     fi
+        fi
+    elif is_fedora; then
+        if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
+            if [[ -z $IRONIC_GRUB2_FILE ]]; then
+                IRONIC_GRUB2_SHIM_FILE=/boot/efi/EFI/fedora/shimx64.efi
+                IRONIC_GRUB2_FILE=/boot/efi/EFI/fedora/grubx64.efi
+                IRONIC_GRUB2_NETWORK_FILE=/boot/efi/EFI/fedora/grubx64.efi
+            fi
+        elif [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+            if [[ -z $IRONIC_GRUB2_FILE ]]; then
+                IRONIC_GRUB2_SHIM_FILE=/boot/efi/EFI/fedora/shimaa64.efi
+                IRONIC_GRUB2_FILE=/boot/efi/EFI/fedora/grubaa64.efi
+                IRONIC_GRUB2_NETWORK_FILE=/boot/efi/EFI/fedora/grubaa64.efi
+            fi
+        fi
     fi
 
     if [[ "$IRONIC_IPXE_ENABLED" == "False" ]]; then
@@ -771,18 +806,34 @@ IRONIC_AGENT_IMAGE_DOWNLOAD_SOURCE=${IRONIC_AGENT_IMAGE_DOWNLOAD_SOURCE:-$IRONIC
 
 # UEFI related functions
 function get_uefi_loader {
-    if is_ubuntu; then
-        echo /usr/share/OVMF/OVMF_CODE.fd
-    elif is_fedora; then
-        echo /usr/share/edk2/ovmf/OVMF_CODE.fd
+    if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+        if is_ubuntu; then
+            echo /usr/share/AAVMF/AAVMF_CODE.fd
+        elif is_fedora; then
+            echo /usr/share/edk2/aarch64/QEMU_EFI.fd
+        fi
+    else
+        if is_ubuntu; then
+            echo /usr/share/OVMF/OVMF_CODE.fd
+        elif is_fedora; then
+            echo /usr/share/edk2/ovmf/OVMF_CODE.fd
+        fi
     fi
 }
 
 function get_uefi_nvram {
-    if is_ubuntu; then
-        echo /usr/share/OVMF/OVMF_VARS.fd
-    elif is_fedora; then
-        echo /usr/share/edk2/ovmf/OVMF_VARS.fd
+    if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+        if is_ubuntu; then
+            echo /usr/share/AAVMF/AAVMF_VARS.fd
+        elif is_fedora; then
+            echo /usr/share/edk2/aarch64/QEMU_VARS.fd
+        fi
+    else
+        if is_ubuntu; then
+            echo /usr/share/OVMF/OVMF_VARS.fd
+        elif is_fedora; then
+            echo /usr/share/edk2/ovmf/OVMF_VARS.fd
+        fi
     fi
 }
 
@@ -1114,13 +1165,18 @@ function configure_redfish {
         mkdir -p $(dirname $IRONIC_REDFISH_EMULATOR_CONFIG)
     fi
 
+    local ironic_node_arch="x86_64"
+    if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+        ironic_node_arch="aarch64"
+    fi
+
     cat - <<EOF > $IRONIC_REDFISH_EMULATOR_CONFIG
 SUSHY_EMULATOR_BOOT_LOADER_MAP = {
     'UEFI': {
-        'x86_64': '$UEFI_LOADER_PATH'
+        '$ironic_node_arch': '$UEFI_LOADER_PATH'
     },
     'Legacy': {
-        'x86_64': None
+        '$ironic_node_arch': None
     }
 }
 SUSHY_EMULATOR_FEATURE_SET = "$IRONIC_REDFISH_EMULATOR_FEATURE_SET"
@@ -1308,10 +1364,13 @@ function configure_ironic_dirs {
                 fi
             fi
             if [ -f $IRONIC_GRUB2_SHIM_FILE ]; then
-                update_loader_copy_paths "bootx64.efi:$IRONIC_GRUB2_SHIM_FILE"
-            fi
-            if [ -f $IRONIC_GRUB2_SHIM_FILE ]; then
-                update_loader_copy_paths "grubx64.efi:$IRONIC_GRUB2_NETWORK_FILE"
+                if [[ "$IRONIC_HW_ARCH" == "aarch64" ]]; then
+                    update_loader_copy_paths "bootaa64.efi:$IRONIC_GRUB2_SHIM_FILE"
+                    update_loader_copy_paths "grubaa64.efi:$IRONIC_GRUB2_FILE"
+                else
+                    update_loader_copy_paths "bootx64.efi:$IRONIC_GRUB2_SHIM_FILE"
+                    update_loader_copy_paths "grubx64.efi:$IRONIC_GRUB2_FILE"
+                fi
             fi
         else
             if [[ -f /usr/lib/ipxe/undionly.kpxe ]]; then
@@ -2459,7 +2518,7 @@ function enroll_nodes {
         local ironic_node_ram=$IRONIC_VM_SPECS_RAM
         local ironic_node_disk=$IRONIC_VM_SPECS_DISK
         local ironic_ephemeral_disk=$IRONIC_VM_EPHEMERAL_DISK
-        local ironic_node_arch=x86_64
+        local ironic_node_arch=$IRONIC_HW_ARCH
         if [[ ! -f $IRONIC_VM_MACS_CSV_FILE ]]; then
             touch $IRONIC_VM_MACS_CSV_FILE
         fi
@@ -2981,6 +3040,9 @@ function upload_image_if_needed {
 
         local dest
         IRONIC_PARTITIONED_IMAGE_NAME=cirros-${CIRROS_VERSION}-x86_64-partition
+        if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+            IRONIC_PARTITIONED_IMAGE_NAME=cirros-${CIRROS_VERSION}-aarch64-partition
+        fi
         dest="$IRONIC_DATA_DIR/$IRONIC_PARTITIONED_IMAGE_NAME.img"
 
         # Export some variables that the script is using.
@@ -3044,20 +3106,21 @@ function upload_baremetal_ironic_efiboot {
 
         sudo mkdir -p $efiboot_mount/efi/boot
 
-        if [[ "$IRONIC_GRUB2_SHIM_FILE" =~ "http".* ]]; then
-            sudo wget "$IRONIC_GRUB2_SHIM_FILE" -O $efiboot_mount/efi/boot/bootx64.efi
-        else
-            sudo cp "$IRONIC_GRUB2_SHIM_FILE" $efiboot_mount/efi/boot/bootx64.efi
-        fi
-        if [[ "$IRONIC_GRUB2_FILE" =~ "http".* ]]; then
-            sudo wget "$IRONIC_GRUB2_FILE" -O $efiboot_mount/efi/boot/grubx64.efi
-        else
-            sudo cp "$IRONIC_GRUB2_FILE" $efiboot_mount/efi/boot/grubx64.efi
-        fi
+        if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
+            if [[ "$IRONIC_GRUB2_SHIM_FILE" =~ "http".* ]]; then
+                sudo wget "$IRONIC_GRUB2_SHIM_FILE" -O $efiboot_mount/efi/boot/bootx64.efi
+            else
+                sudo cp "$IRONIC_GRUB2_SHIM_FILE" $efiboot_mount/efi/boot/bootx64.efi
+            fi
+            if [[ "$IRONIC_GRUB2_FILE" =~ "http".* ]]; then
+                sudo wget "$IRONIC_GRUB2_FILE" -O $efiboot_mount/efi/boot/grubx64.efi
+            else
+                sudo cp "$IRONIC_GRUB2_FILE" $efiboot_mount/efi/boot/grubx64.efi
+            fi
 
-        sudo umount $efiboot_mount
+            sudo umount $efiboot_mount
 
-        mv $efiboot_path $IRONIC_EFIBOOT
+            mv $efiboot_path $IRONIC_EFIBOOT
     fi
 
     # load efiboot into glance
