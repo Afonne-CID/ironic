@@ -727,6 +727,9 @@ expected_object_fingerprints = {
     'Runbook': '1.0-7a9c65b49b5f7b45686b6a674e703629',
     'RunbookCRUDNotification': '1.0-59acc533c11d306f149846f922739c15',
     'RunbookCRUDPayload': '1.0-f0c97f4ff29eb3401e53b34550a95e30',
+    'InspectionRule':  '1.0-ccc36711c12c832776e4dc8890022f87',
+    'InspectionRuleCRUDNotification': '1.0-ccc36711c12c832776e4dc8890022f87',
+    'InspectionRuleCRUDPayload':  '1.0-ccc36711c12c832776e4dc8890022f87',
 }
 
 

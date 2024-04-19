@@ -47,6 +47,13 @@ opts.set_defaults(cfg.CONF, DEFAULT_POLICY_FILE,
 # applicable (e.g., cleaning up baremetal hosts)
 SYSTEM_ADMIN = 'role:admin and system_scope:all'
 
+# Policy check to allow for the OpenStack community change in RBAC direction,
+# where "admin" is still admin across all projects, but "manager" is the
+# project delegated administrative account scoped to the project.
+# Also adds service role access for the service to authenticate which was
+# generally missed with inspector as well.
+ADMIN = '(' + SYSTEM_ADMIN + ') or (role:admin) or (role:service)'
+
 # Generic policy check string for system users who don't require all the
 # authorization that system administrators typically have. This persona, or
 # check string, typically isn't used by default, but it's existence is useful
@@ -1029,7 +1036,7 @@ node_policies = [
         name='baremetal:node:inventory:get',
         check_str=SYSTEM_OR_OWNER_READER,
         scope_types=['system', 'project'],
-        description='Retrieve introspection data for a node.',
+        description='Retrieve inspection data for a node.',
         operations=[
             {'path': '/nodes/{node_ident}/inventory', 'method': 'GET'},
         ],
@@ -1999,6 +2006,29 @@ runbook_policies = [
     )
 ]
 
+rule_policies = [
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:get',
+        check_str=ADMIN,
+        description='Get inspection rule(s)',
+        operations=[{'path': '/rules', 'method': 'GET'},
+                    {'path': '/rules/{rule_id}', 'method': 'GET'}],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:create',
+        check_str=ADMIN,
+        description='Create inspection rule',
+        operations=[{'path': '/rules', 'method': 'POST'}],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:delete',
+        check_str=ADMIN,
+        description='Delete an inspection rule',
+        operations=[{'path': '/rules', 'method': 'DELETE'},
+                    {'path': '/rules/{rule_id}', 'method': 'DELETE'}],
+    ),
+]
+
 
 def list_policies():
     policies = itertools.chain(
@@ -2016,6 +2046,7 @@ def list_policies():
         event_policies,
         deploy_template_policies,
         runbook_policies,
+        rule_policies,
     )
     return policies
 

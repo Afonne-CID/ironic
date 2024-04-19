@@ -179,6 +179,19 @@ def _get_runbook_select_with_steps():
     ).options(selectinload(models.Runbook.steps))
 
 
+def _get_inspection_rule_aggregate():
+    """Return a select object for the InspectionRule joined with
+
+    actions and conditions.
+
+    :returns: a select object.
+    """
+    return sa.select(
+        models.InspectionRule
+    ).options(selectinload(models.InspectionRule.actions),
+              selectinload(models.InspectionRule.conditions))
+
+
 def model_query(model, *args, **kwargs):
     """Query helper for simpler session usage.
 
@@ -3166,3 +3179,88 @@ class Connection(api.Connection):
                       .filter_by(node_id=node_id)
                       .all())
         return result
+
+    @staticmethod
+    def _get_inspection_rule_actions(actions, inspection_rule_uuid=None):
+        results = []
+        for values in actions:
+            action = models.InspectionRuleAction()
+            action.update(values)
+            if inspection_rule_uuid:
+                action['inspection_rule_uuid'] = inspection_rule_uuid
+            results.append(action)
+        return results
+
+    @staticmethod
+    def _get_inspection_rule_conditions(conditions, inspection_rule_uuid=None):
+        results = []
+        for values in conditions:
+            condition = models.InspectionRuleCondition()
+            condition.update(values)
+            if inspection_rule_uuid:
+                condition['inspection_rule_uuid'] = inspection_rule_uuid
+            results.append(condition)
+        return results
+
+    @oslo_db_api.retry_on_deadlock
+    def create_inspection_rule(self, values):
+        """Create new rule"""
+        actions = values.get('actions', [])
+        values['actions'] = self._get_inspection_rule_actions(actions)
+
+        conditions = values.get('conditions', [])
+        values['conditions'] = self._get_inspection_rule_conditions(conditions)
+
+        inspection_rule = models.InspectionRule()
+        inspection_rule.update(values)
+
+        with _session_for_write() as session:
+            try:
+                session.add(inspection_rule)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.InspectionRuleAlreadyExists(
+                    uuid=values['uuid'])
+        return inspection_rule
+
+    def _get_inspection_rule(self, field, value):
+        """Helper method for retrieving an inspection rule."""
+        query = (_get_inspection_rule_aggregate()
+                 .where(field == value))
+        try:
+            with _session_for_read() as session:
+                res = session.execute(query).one()[0]
+            return res
+        except NoResultFound:
+            raise exception.InspectionRuleNotFound(inspection_rule=value)
+
+    def get_inspection_rule_by_uuid(self, inspection_rule_uuid):
+        return self._get_inspection_rule(models.InspectionRule.uuid,
+                                         inspection_rule_uuid)
+
+    def get_inspection_rule_list(self, limit=None, marker=None, filters=None,
+                                 sort_key=None, sort_dir=None):
+        query = (sa.select(models.InspectionRule)
+                 .options(selectinload(models.InspectionRule.actions),
+                          selectinload(models.InspectionRule.conditions)))
+        return _paginate_query(models.InspectionRule, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @oslo_db_api.retry_on_deadlock
+    def destroy_inspection_rule(self, inspection_rule_uuid):
+        with _session_for_write() as session:
+            session.query(models.InspectionRuleAction).filter_by(
+                inspection_rule_uuid=inspection_rule_uuid).delete()
+            session.query(models.InspectionRuleCondition).filter_by(
+                inspection_rule_uuid=inspection_rule_uuid).delete()
+            count = session.query(models.InspectionRule).filter_by(
+                id=inspection_rule_uuid).delete()
+            if count == 0:
+                raise exception.InspectionRuleNotFound(
+                    uuid=inspection_rule_uuid)
+
+    def destroy_all_inspection_rules():
+        """Delete all rules."""
+        with _session_for_write() as session:
+            session.query(models.InpectionRule).delete(
+                synchronize_session=False)

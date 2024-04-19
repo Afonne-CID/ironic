@@ -561,6 +561,51 @@ class RunbookStep(Base):
     )
 
 
+class InspectionRule(Base):
+    __tablename__ = 'inspection_rules'
+    __table_args__ = (
+        schema.UniqueConstraint('uuid', name='uniq_inspection_rules0uuid'),
+        table_args())
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36))
+    description = Column(Text)
+    # NOTE(dtantsur): in the future we might need to temporary disable a rule
+    disabled = Column(Boolean, default=False)
+    scope = Column(String(255), nullable=True)
+    conditions = orm.relationship('InspectionRuleCondition', lazy='joined',
+                                  order_by='InspectionRuleCondition.id',
+                                  cascade="all, delete-orphan")
+    actions = orm.relationship(
+        'InspectionRuleAction',
+        lazy='joined',
+        order_by='InspectionRuleAction.id',
+        cascade="all, delete-orphan"
+    )
+
+
+class InspectionRuleCondition(Base):
+    __tablename__ = 'inspection_rule_conditions'
+    id = Column(Integer, primary_key=True)
+    inspection_rule_id = Column(String(36),
+                                ForeignKey('inspection_rules.id'))
+    op = Column(String(255), nullable=False)
+    multiple = Column(String(255), nullable=False)
+    invert = Column(Boolean, default=False)
+    # NOTE(dtantsur): while all operations now require a field, I can also
+    # imagine user-defined operations that do not, thus it's nullable.
+    field = Column(Text)
+    params = Column(db_types.JsonEncodedDict)
+
+
+class InspectionRuleAction(Base):
+    __tablename__ = 'inspection_rule_actions'
+    id = Column(Integer, primary_key=True)
+    inspection_rule_id = Column(String(36),
+                                ForeignKey('inspection_rules.id'))
+    action = Column(String(255), nullable=False)
+    params = Column(db_types.JsonEncodedDict)
+
+
 def get_class(model_name):
     """Returns the model class with the specified name.
 

@@ -1616,3 +1616,36 @@ class Connection(object, metaclass=abc.ABCMeta):
         :returns: A list of FirmwareComponent objects.
         :raises: NodeNotFound if the node is not found.
         """
+
+    @abc.abstractmethod
+    def create_inspection_rule(self, values):
+        """Create an inspection rule.
+
+        :param values: A dict describing the rule.
+        :raises: InspectionRuleAlreadyExists if an inspection rule with the
+            same UUID exists.
+        :returns: A rule.
+        """
+
+    @abc.abstractmethod
+    def get_inspection_rule_by_uuid(self, rule_uuid):
+        """Retrieve an inspection rule by UUID.
+
+        :param rule_uuid: UUID of the rule to retrieve.
+        :raises: InspectionRuleNotFound if the rule does not exist.
+        :returns: A rule.
+        """
+
+    @abc.abstractmethod
+    def get_inspection_rule_list(self, limit=None, marker=None, filters=None,
+                                 sort_key=None, sort_dir=None):
+        """Retrieve a list of inspection rules.
+
+        :param limit: Maximum number of rules to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: Direction in which results should be sorted.
+                         (asc, desc)
+        :returns: A list of inspection rules.
+        """

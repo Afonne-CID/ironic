@@ -905,3 +905,13 @@ class UnsupportedHardwareFeature(Invalid):
 
 class BootModeNotAllowed(Invalid):
     _msg_fmt = _("'%(mode)s' boot mode is not allowed for %(op)s operation.")
+
+
+class InspectionRuleAlreadyExists(Conflict):
+    """Rule requested already exists in the database."""
+    _msg_fmt = _("A Rule with UUID %(uuid)s already exists.")
+
+
+class InspectionRuleNotFound(NotFound):
+    """The requested rule was not found."""
+    _msg_fmt = _("Rule %(uuid)s could not be found.")

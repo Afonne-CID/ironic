@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import abc
 import collections
 import copy
 from http import client as http_client
@@ -29,6 +30,7 @@ from oslo_config import cfg
 from oslo_policy import policy as oslo_policy
 from oslo_utils import uuidutils
 from pecan import rest
+import stevedore
 
 from ironic import api
 from ironic.api.controllers import link
@@ -1612,12 +1614,40 @@ def convert_steps(rpc_steps):
         yield result
 
 
+def convert_actions(rpc_actions):
+    for action in rpc_actions:
+        yield {
+            'action': action['action'],
+            'params': action.get('params', {})
+        }
+
+
+def convert_conditions(rpc_conditions):
+    for condition in rpc_conditions:
+        result = {
+            'op': condition['op'],
+            'multiple': condition['multiple'],
+            'invert': condition.get('invert', False),
+            'field': condition.get('field'),
+            'params': condition.get('params', {})
+        }
+        yield result
+
+
 def allow_runbooks():
     """Check if accessing runbook endpoints is allowed.
 
     Version 1.92 of the API exposed runbook endpoints.
     """
     return api.request.version.minor >= versions.MINOR_92_RUNBOOKS
+
+
+def allow_inspection_rules():
+    """Check if accessing rule endpoints is allowed.
+
+    Version 1.93 of the API exposed rule endpoints.
+    """
+    return api.request.version.minor >= versions.MINOR_93_INSPECTION_RULES
 
 
 def check_owner_policy(object_type, policy_name, owner, lessee=None,
@@ -2209,3 +2239,124 @@ def allow_port_name():
 def allow_attach_detach_vmedia():
     """Check if we should support virtual media actions."""
     return api.request.version.minor >= versions.MINOR_89_ATTACH_DETACH_VMEDIA
+
+
+def get_inspection_rule(rule_ident):
+    """Get the RPC inspection rule from the UUID or logical name.
+
+    :param rule_ident: the UUID or logical name of a rule.
+
+    :returns: The RPC rule.
+    :raises: InvalidUuidOrName if the name or uuid provided is not valid.
+    :raises: InspectionRuleNotFound if the rule is not found.
+    """
+    # If runbook_ident is instead a valid UUID, treat it as a UUID.
+    if uuidutils.is_uuid_like(rule_ident):
+        return objects.InspectionRule.get_by_uuid(api.request.context,
+                                                  rule_ident)
+
+    # Else, we can refer to runbooks by their name too
+    if utils.is_valid_logical_name(rule_ident):
+        return objects.InspectionRule.get_by_name(api.request.context,
+                                                  rule_ident)
+    raise exception.InvalidUuidOrName(name=rule_ident)
+
+
+def rule_conditions_manager():
+    """Create a Stevedore extension manager for conditions in rules."""
+    global _CONDITIONS_MGR
+    if _CONDITIONS_MGR is None:
+        _CONDITIONS_MGR = stevedore.ExtensionManager(
+            'ironic_inspector.rules.conditions',
+            invoke_on_load=True)
+    return _CONDITIONS_MGR
+
+
+def rule_actions_manager():
+    """Create a Stevedore extension manager for actions in rules."""
+    global _ACTIONS_MGR
+    if _ACTIONS_MGR is None:
+        _ACTIONS_MGR = stevedore.ExtensionManager(
+            'ironic_inspector.rules.actions',
+            invoke_on_load=True)
+    return _ACTIONS_MGR
+
+
+def capabilities_to_dict(caps):
+    """Convert the Node's capabilities into a dictionary."""
+    if not caps:
+        return {}
+    return dict([key.split(':', 1) for key in caps.split(',')])
+
+
+class WithValidation(object):
+    REQUIRED_PARAMS = set()
+    """Set with names of required parameters."""
+
+    OPTIONAL_PARAMS = set()
+    """Set with names of optional parameters."""
+
+    def validate(self, params, **kwargs):
+        """Validate params passed during creation.
+
+        Default implementation checks for presence of fields from
+        REQUIRED_PARAMS and fails for unexpected fields (not from
+        REQUIRED_PARAMS + OPTIONAL_PARAMS).
+
+        :param params: params as a dictionary
+        :param kwargs: used for extensibility without breaking existing plugins
+        :raises: ValueError on validation failure
+        """
+        passed = {k for k, v in params.items() if v is not None}
+        missing = self.REQUIRED_PARAMS - passed
+        unexpected = passed - self.REQUIRED_PARAMS - self.OPTIONAL_PARAMS
+
+        msg = []
+        if missing:
+            msg.append(_('missing required parameter(s): %s')
+                       % ', '.join(missing))
+        if unexpected:
+            msg.append(_('unexpected parameter(s): %s')
+                       % ', '.join(unexpected))
+
+        if msg:
+            raise ValueError('; '.join(msg))
+
+
+class RuleConditionPlugin(WithValidation, metaclass=abc.ABCMeta):  # pragma: no cover # noqa
+    """Abstract base class for rule condition plugins."""
+
+    REQUIRED_PARAMS = {'value'}
+
+    ALLOW_NONE = False
+    """Whether this condition accepts None when field is not found."""
+
+    @abc.abstractmethod
+    def check(self, node_info, field, params, **kwargs):
+        """Check if condition holds for a given field.
+
+        :param node_info: NodeInfo object
+        :param field: field value
+        :param params: parameters as a dictionary, changing it here will change
+                       what will be stored in database
+        :param kwargs: used for extensibility without breaking existing plugins
+        :raises ValueError: on unacceptable field value
+        :returns: True if check succeeded, otherwise False
+        """
+
+
+class RuleActionPlugin(WithValidation, metaclass=abc.ABCMeta):  # pragma: no cover # noqa
+    """Abstract base class for rule action plugins."""
+
+    FORMATTED_PARAMS = []
+    """List of params will be formatted with python format."""
+
+    @abc.abstractmethod
+    def apply(self, node_info, params, **kwargs):
+        """Run action on successful rule match.
+
+        :param node_info: NodeInfo object
+        :param params: parameters as a dictionary
+        :param kwargs: used for extensibility without breaking existing plugins
+        :raises: utils.Error on failure
+        """

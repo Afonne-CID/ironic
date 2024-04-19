@@ -27,6 +27,7 @@ from ironic.objects import chassis
 from ironic.objects import conductor
 from ironic.objects import deploy_template
 from ironic.objects import firmware
+from ironic.objects import inspection_rule as rule
 from ironic.objects import node
 from ironic.objects import node_history
 from ironic.objects import node_inventory
@@ -821,3 +822,80 @@ def get_test_firmware_component_list():
         {'component': 'BIOS', 'initial_version': 'v1.5.0',
          'current_version': 'v1.5.0', 'last_version_flashed': None},
     ]
+
+
+def get_test_inspection_rule(**kw):
+    default_uuid = uuidutils.generate_uuid()
+    return {
+        'version': kw.get('version', rule.InspectionRule.VERSION),
+        'created_at': kw.get('created_at'),
+        'updated_at': kw.get('updated_at'),
+        'id': kw.get('id', 431),
+        'uuid': kw.get('uuid', default_uuid),
+        'description': kw.get('description', 'an inspection rule'),
+        'disabled': kw.get('disabled', False),
+        'scope': kw.get('scope', 'scope'),
+        'actions': kw.get('actions', [get_test_inspection_rule_action(
+            inspection_rule_id=kw.get('uuid', 234))]),
+        'conditions': kw.get('conditions', [
+            get_test_inspection_rule_condition(
+                inspection_rule_id=kw.get('uuid', 235))]),
+    }
+
+
+def get_test_inspection_rule_action(**kw):
+    return {
+        'created_at': kw.get('created_at'),
+        'updated_at': kw.get('updated_at'),
+        'id': kw.get('id', 345),
+        'inspection_rule_id': kw.get('inspection_id', 234),
+        'action': kw.get('action', 'set-attribute'),
+        'params': kw.get('params', {'name': 'CUSTOM_FOO'}),
+    }
+
+
+def get_test_inspection_rule_condition(**kw):
+    return {
+        'created_at': kw.get('created_at'),
+        'updated_at': kw.get('updated_at'),
+        'id': kw.get('id', 345),
+        'inspection_rule_id': kw.get('inspection_rule_id', 234),
+        'op': kw.get('op', 'eq'),
+        'multiple': kw.get('multiple', 'any'),
+        'invert': kw.get('invert', False),
+        'field': kw.get('field', 'local_gb'),
+        'params': kw.get('params', {'name': 'CUSTOM_FOO'}),
+    }
+
+
+def create_test_inspection_rule(**kw):
+    """Create a inspection rule in the DB and return InspectionRule model.
+
+    :param kw: kwargs with overriding values for the inspection rule.
+    :returns: Test InspectionRule DB object.
+    """
+    inspection_rule = get_test_inspection_rule(**kw)
+    dbapi = db_api.get_instance()
+    if 'uuid' not in kw:
+        del inspection_rule['uuid']
+    if 'actions' not in kw:
+        for action in inspection_rule['actions']:
+            del action['id']
+            del action['inspection_rule_id']
+    else:
+        for kw_action, inspection_rule_action in zip(
+            kw['actions'],
+            inspection_rule['actions']):
+            if 'id' not in kw_action:
+                del inspection_rule_action['id']
+    if 'conditions' not in kw:
+        for condition in inspection_rule['conditions']:
+            del condition['id']
+            del condition['inspection_rule_id']
+    else:
+        for kw_condition, inspection_rule_condition in zip(
+            kw['conditions'],
+            inspection_rule['conditions']):
+            if 'id' not in kw_condition:
+                del inspection_rule_condition['id']
+    return dbapi.create_inspection_rule(inspection_rule)

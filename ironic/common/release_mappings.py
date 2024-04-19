@@ -709,7 +709,7 @@ RELEASE_MAPPING = {
     # make it below. To release, we will preserve a version matching
     # the release as a separate block of text, like above.
     'master': {
-        'api': '1.92',
+        'api': '1.93',
         'rpc': '1.60',
         'objects': {
             'Allocation': ['1.1'],
@@ -729,6 +729,7 @@ RELEASE_MAPPING = {
             'VolumeTarget': ['1.0'],
             'FirmwareComponent': ['1.0'],
             'Runbook': ['1.0'],
+            'InspectionRule': ['1.0'],
         }
     },
 }
