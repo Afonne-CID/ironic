@@ -668,12 +668,12 @@ if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
 fi
 
 # Handle architecture specific package installs
+install_package shim shim-signed
 if is_ubuntu; then
     if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
-        install_package shim
-        install_package grub-efi-amd64-signed shim-signed
+        install_package grub-efi-amd64-signed
     elif [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
-        install_package qemu-system-arm qemu-efi qemu-efi-aarch64 shim-signed
+        install_package qemu-system-arm qemu-efi qemu-efi-aarch64
     fi
 elif is_fedora; then
     if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
@@ -700,12 +700,12 @@ if [[ "$IRONIC_BOOT_MODE" == "uefi" ]]; then
                 IRONIC_GRUB2_FILE=/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed
                 IRONIC_GRUB2_NETWORK_FILE=/usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed
             fi
-        # elif [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
-        #     if [[ -z $IRONIC_GRUB2_FILE ]]; then
-        #         IRONIC_GRUB2_SHIM_FILE=/usr/lib/shim/shimaa64.efi.signed
-        #         IRONIC_GRUB2_FILE=/usr/lib/grub/arm64-efi-signed/grubaa64.efi.signed
-        #         IRONIC_GRUB2_NETWORK_FILE=/usr/lib/grub/arm64-efi-signed/grubnetaa64.efi.signed
-        #     fi
+        elif [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+            if [[ -z $IRONIC_GRUB2_FILE ]]; then
+                IRONIC_GRUB2_SHIM_FILE=/usr/lib/shim/shimaa64.efi.signed
+                IRONIC_GRUB2_FILE=/usr/lib/grub/arm64-efi-signed/grubaa64.efi.signed
+                IRONIC_GRUB2_NETWORK_FILE=/usr/lib/grub/arm64-efi-signed/grubnetaa64.efi.signed
+            fi
         fi
     elif is_fedora; then
         if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
@@ -3106,21 +3106,34 @@ function upload_baremetal_ironic_efiboot {
 
         sudo mkdir -p $efiboot_mount/efi/boot
 
-        if [[ $IRONIC_HW_ARCH == "x86_64" ]]; then
-            if [[ "$IRONIC_GRUB2_SHIM_FILE" =~ "http".* ]]; then
+        if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
+            # Match both "http" and "https" urls
+            if [[ "$IRONIC_GRUB2_SHIM_FILE" =~ "https?".* ]]; then
+                sudo wget "$IRONIC_GRUB2_SHIM_FILE" -O $efiboot_mount/efi/boot/bootaa64.efi
+            else
+                sudo cp "$IRONIC_GRUB2_SHIM_FILE" $efiboot_mount/efi/boot/bootaa64.efi
+            fi
+            if [[ "$IRONIC_GRUB2_FILE" =~ "https?".* ]]; then
+                sudo wget "$IRONIC_GRUB2_FILE" -O $efiboot_mount/efi/boot/grubaa64.efi
+            else
+                sudo cp "$IRONIC_GRUB2_FILE" $efiboot_mount/efi/boot/grubaa64.efi
+            fi
+        else
+            if [[ "$IRONIC_GRUB2_SHIM_FILE" =~ "https?".* ]]; then
                 sudo wget "$IRONIC_GRUB2_SHIM_FILE" -O $efiboot_mount/efi/boot/bootx64.efi
             else
                 sudo cp "$IRONIC_GRUB2_SHIM_FILE" $efiboot_mount/efi/boot/bootx64.efi
             fi
-            if [[ "$IRONIC_GRUB2_FILE" =~ "http".* ]]; then
+            if [[ "$IRONIC_GRUB2_FILE" =~ "https?".* ]]; then
                 sudo wget "$IRONIC_GRUB2_FILE" -O $efiboot_mount/efi/boot/grubx64.efi
             else
                 sudo cp "$IRONIC_GRUB2_FILE" $efiboot_mount/efi/boot/grubx64.efi
             fi
+        fi
 
-            sudo umount $efiboot_mount
+        sudo umount $efiboot_mount
 
-            mv $efiboot_path $IRONIC_EFIBOOT
+        mv $efiboot_path $IRONIC_EFIBOOT
     fi
 
     # load efiboot into glance
