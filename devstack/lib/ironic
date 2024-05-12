@@ -3107,29 +3107,15 @@ function upload_baremetal_ironic_efiboot {
 
         sudo mkdir -p $efiboot_mount/efi/boot
 
-        if [[ $IRONIC_HW_ARCH == "aarch64" ]]; then
-            # Match both "http" and "https" urls
-            if [[ "$IRONIC_GRUB2_SHIM_FILE" =~ "https?".* ]]; then
-                sudo wget "$IRONIC_GRUB2_SHIM_FILE" -O $efiboot_mount/efi/boot/bootaa64.efi
-            else
-                sudo cp "$IRONIC_GRUB2_SHIM_FILE" $efiboot_mount/efi/boot/bootaa64.efi
-            fi
-            if [[ "$IRONIC_GRUB2_FILE" =~ "https?".* ]]; then
-                sudo wget "$IRONIC_GRUB2_FILE" -O $efiboot_mount/efi/boot/grubaa64.efi
-            else
-                sudo cp "$IRONIC_GRUB2_FILE" $efiboot_mount/efi/boot/grubaa64.efi
-            fi
+        if [[ "$IRONIC_GRUB2_SHIM_FILE" =~ "https?".* ]]; then
+            sudo wget "$IRONIC_GRUB2_SHIM_FILE" -O $efiboot_mount/efi/boot/bootx64.efi
         else
-            if [[ "$IRONIC_GRUB2_SHIM_FILE" =~ "https?".* ]]; then
-                sudo wget "$IRONIC_GRUB2_SHIM_FILE" -O $efiboot_mount/efi/boot/bootx64.efi
-            else
-                sudo cp "$IRONIC_GRUB2_SHIM_FILE" $efiboot_mount/efi/boot/bootx64.efi
-            fi
-            if [[ "$IRONIC_GRUB2_FILE" =~ "https?".* ]]; then
-                sudo wget "$IRONIC_GRUB2_FILE" -O $efiboot_mount/efi/boot/grubx64.efi
-            else
-                sudo cp "$IRONIC_GRUB2_FILE" $efiboot_mount/efi/boot/grubx64.efi
-            fi
+            sudo cp "$IRONIC_GRUB2_SHIM_FILE" $efiboot_mount/efi/boot/bootx64.efi
+        fi
+        if [[ "$IRONIC_GRUB2_FILE" =~ "https?".* ]]; then
+            sudo wget "$IRONIC_GRUB2_FILE" -O $efiboot_mount/efi/boot/grubx64.efi
+        else
+            sudo cp "$IRONIC_GRUB2_FILE" $efiboot_mount/efi/boot/grubx64.efi
         fi
 
         sudo umount $efiboot_mount
