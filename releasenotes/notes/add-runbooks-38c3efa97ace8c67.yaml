@@ -1,0 +1,6 @@
+---
+features:
+  - |
+    Adds a new API concept, runbooks, to enable users create, manage,
+    and execute a series of deployment steps, enhancing automation and
+    self-service capabilities.

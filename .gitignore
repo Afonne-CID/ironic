@@ -15,6 +15,7 @@ releasenotes/build
 # sample config files
 etc/ironic/ironic.conf.sample
 etc/ironic/policy.yaml.sample
+etc/ironic/ironic.conf.local
 
 # Packages/installer info
 *.egg

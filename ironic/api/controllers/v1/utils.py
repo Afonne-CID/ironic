@@ -12,7 +12,6 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
 import copy
 from http import client as http_client
 import inspect
@@ -94,6 +93,14 @@ TRAITS_SCHEMA = {
     ]
 }
 
+RUNBOOK_TRAITS_SCHEMA = {
+    'type': 'string', 'minLength': 1, 'maxLength': 255,
+    'anyOf': [
+        {'pattern': '^[A-Za-z0-9_]+$'},
+        {'enum': STANDARD_TRAITS},
+    ]
+}
+
 LOCAL_LINK_BASE_SCHEMA = {
     'type': 'object',
     'properties': {
@@ -155,6 +162,24 @@ DEPLOY_STEP_SCHEMA = {
         'step': {'type': 'string', 'minLength': 1},
     },
     'required': ['interface', 'step', 'args', 'priority'],
+    'additionalProperties': False,
+}
+
+RUNBOOK_STEP_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'args': {'type': 'object'},
+        'interface': {
+            'type': 'string',
+            'enum': list(conductor_steps.DEPLOYING_INTERFACE_PRIORITY)
+        },
+        'step': {'type': 'string', 'minLength': 1},
+        'order': {'anyOf': [
+            {'type': 'integer', 'minimum': 0},
+            {'type': 'string', 'minLength': 1, 'pattern': '^[0-9]+$'}
+        ]}
+    },
+    'required': ['interface', 'step', 'args', 'order'],
     'additionalProperties': False,
 }
 
@@ -683,6 +708,27 @@ def get_rpc_deploy_template_with_suffix(template_ident):
     """
     return _get_with_suffix(get_rpc_deploy_template, template_ident,
                             exception.DeployTemplateNotFound)
+
+
+def get_rpc_runbook(runbook_ident):
+    """Get the RPC runbook from the UUID or logical name.
+
+    :param runbook_ident: the UUID or logical name of a runbook.
+
+    :returns: The RPC runbook.
+    :raises: InvalidUuidOrName if the name or uuid provided is not valid.
+    :raises: RunbookNotFound if the runbook is not found.
+    """
+    # If runbook_ident is instead a valid UUID, treat it as a UUID.
+    if uuidutils.is_uuid_like(runbook_ident):
+        return objects.Runbook.get_by_uuid(api.request.context,
+                                           runbook_ident)
+
+    # Else, we can refer to runbooks by their name too
+    if utils.is_valid_logical_name(runbook_ident):
+        return objects.Runbook.get_by_name(api.request.context,
+                                           runbook_ident)
+    raise exception.InvalidUuidOrName(name=runbook_ident)
 
 
 def is_valid_node_name(name):
@@ -1515,6 +1561,14 @@ def check_policy_true(policy_name):
     # we're comparing are coming from the same place.
     cdict = api.request.context.to_policy_values()
     return policy.check_policy(policy_name, cdict, api.request.context)
+
+
+def allow_runbooks():
+    """Check if accessing runbook endpoints is allowed.
+
+    Version 1.92 of the API exposed runbook endpoints.
+    """
+    return api.request.version.minor >= versions.MINOR_92_RUNBOOKS
 
 
 def check_owner_policy(object_type, policy_name, owner, lessee=None,

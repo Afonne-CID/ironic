@@ -21,6 +21,7 @@ from ironic.common.i18n import _
 from ironic.common import states
 from ironic.conductor import utils
 from ironic.objects import deploy_template
+from ironic.objects import runbook
 
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
@@ -354,6 +355,23 @@ def _get_deployment_templates(task):
                                                         instance_traits)
 
 
+def _get_runbooks(task):
+    """Get runbooks for task.node.
+
+    Return runbooks where the name of the runbook
+    matches one of the node's instance traits (the subset of the node's traits
+    requested by the user via a flavor or image).
+
+    :param task: A TaskManager object
+    :returns: a list of Runbook objects.
+    """
+    node = task.node
+    if not node.instance_info.get('traits'):
+        return []
+    instance_traits = node.instance_info['traits']
+    return runbook.Runbook.list_by_names(task.context, instance_traits)
+
+
 def _get_steps_from_deployment_templates(task, templates):
     """Get deployment template steps for task.node.
 
@@ -372,6 +390,24 @@ def _get_steps_from_deployment_templates(task, templates):
     for template in templates:
         steps.extend([{key: step[key] for key in step_fields}
                       for step in template.steps])
+    return steps
+
+
+def _get_steps_from_runbooks(task, runbooks):
+    """Get deployment runbook steps for task.node.
+
+    Given a list of runbook objects, return a list of all deploy steps
+    combined.
+
+    :param task: A TaskManager object
+    :param runbooks: a list of runbooks
+    :returns: A list of step dictionaries
+    """
+    steps = []
+    step_fields = ('interface', 'step', 'args', 'order')
+    for rb in runbooks:
+        steps.extend([{key: step[key] for key in step_fields}
+                      for step in rb.steps])
     return steps
 
 

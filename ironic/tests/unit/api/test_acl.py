@@ -298,6 +298,7 @@ class TestRBACModelBeforeScopesBase(TestACLBase):
         # false positives with test runners.
         db_utils.create_test_node(
             uuid='18a552fb-dcd2-43bf-9302-e4c93287be11')
+        fake_db_runbook = db_utils.create_test_runbook()
         self.format_data.update({
             'node_ident': fake_db_node['uuid'],
             'allocated_node_ident': fake_db_node_alloced['uuid'],
@@ -314,6 +315,7 @@ class TestRBACModelBeforeScopesBase(TestACLBase):
             'driver_name': 'fake-driverz',
             'bios_setting': fake_setting,
             'trait': fake_trait,
+            'runbook_ident': fake_db_runbook['uuid'],
             'volume_target_ident': fake_db_volume_target['uuid'],
             'volume_connector_ident': fake_db_volume_connector['uuid'],
             'history_ident': fake_history['uuid'],
@@ -482,6 +484,7 @@ class TestRBACProjectScoped(TestACLBase):
             node_id=other_node['id'],
             name='corgis_rule_the_world',
             address='ff:ff:ff:ff:ff:0f')
+        fake_db_runbook = db_utils.create_test_runbook()
 
         self.format_data.update({
             'node_ident': unowned_node['uuid'],
@@ -496,6 +499,7 @@ class TestRBACProjectScoped(TestACLBase):
             'vif_ident': fake_vif_port_id,
             'ind_component': 'component',
             'ind_ident': 'magic_light',
+            'runbook_ident': fake_db_runbook['uuid'],
             'owner_port_ident': owned_node_port['uuid'],
             'other_port_ident': other_port['uuid'],
             'owner_portgroup_ident': owner_pgroup['uuid'],

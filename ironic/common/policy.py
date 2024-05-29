@@ -49,7 +49,7 @@ SYSTEM_ADMIN = 'role:admin and system_scope:all'
 
 # Generic policy check string for system users who don't require all the
 # authorization that system administrators typically have. This persona, or
-# check string, typically isn't used by default, but it's existence it useful
+# check string, typically isn't used by default, but it's existence is useful
 # in the event a deployment wants to offload some administrative action from
 # system administrator to system members.
 # The rule:service_role match here is to enable an elevated level of API
@@ -59,7 +59,7 @@ SYSTEM_MEMBER = '(role:member and system_scope:all) or rule:service_role'  # noq
 
 # Generic policy check string for read-only access to system-level
 # resources. This persona is useful for someone who needs access
-# for auditing or even support. These uses are also able to view
+# for auditing or even support. These users are also able to view
 # project-specific resources where applicable (e.g., listing all
 # volumes in the deployment, regardless of the project they belong to).
 # The rule:service_role match here is to enable an elevated level of API
@@ -1880,6 +1880,62 @@ deploy_template_policies = [
     ),
 ]
 
+runbook_policies = [
+    policy.DocumentedRuleDefault(
+        name='baremetal:runbook:get',
+        check_str=SYSTEM_OR_OWNER_READER,
+        scope_types=['system', 'project'],
+        description='Retrieve Runbook records',
+        operations=[
+            {'path': '/runbooks', 'method': 'GET'},
+            {'path': '/runbooks/{runbook_ident}', 'method': 'GET'}
+        ],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:runbook:create',
+        check_str=SYSTEM_ADMIN_OR_OWNER_ADMIN,
+        scope_types=['system', 'project'],
+        description='Create Runbook records',
+        operations=[{'path': '/runbooks', 'method': 'POST'}],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:runbook:delete',
+        check_str=SYSTEM_ADMIN_OR_OWNER_ADMIN,
+        scope_types=['system', 'project'],
+        description='Delete Runbook records',
+        operations=[
+            {'path': '/runbooks/{runbook_ident}', 'method': 'DELETE'}
+        ],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:runbook:update',
+        check_str=SYSTEM_MEMBER_OR_OWNER_ADMIN,
+        scope_types=['system', 'project'],
+        description='Update Runbook records',
+        operations=[
+            {'path': '/runbooks/{runbook_ident}', 'method': 'PATCH'}
+        ],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:runbook:update:public',
+        check_str=SYSTEM_ADMIN_OR_OWNER_ADMIN,
+        scope_types=['system'],
+        description='Set and unset a Runbook as public',
+        operations=[
+            {'path': '/runbooks/{runbook_ident}/public', 'method': 'PATCH'}
+        ],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:runbook:update:owner',
+        check_str=SYSTEM_ADMIN_OR_OWNER_ADMIN,
+        scope_types=['system'],
+        description='Set and unset the owner of a Runbook',
+        operations=[
+            {'path': '/runbooks/{runbook_ident}/owner', 'method': 'PATCH'}
+        ],
+    ),
+]
+
 
 def list_policies():
     policies = itertools.chain(
@@ -1896,6 +1952,7 @@ def list_policies():
         allocation_policies,
         event_policies,
         deploy_template_policies,
+        runbook_policies,
     )
     return policies
 

@@ -166,11 +166,15 @@ class BaseApiTest(db_base.DbTestCase):
                               with the request
         :param status: expected status code of response
         """
-        return self._request_json(path=path, params=params,
-                                  expect_errors=expect_errors,
-                                  headers=headers, extra_environ=extra_environ,
-                                  status=status, method="patch",
-                                  path_prefix=path_prefix)
+        print('Got here: params: ', params)
+        response = self._request_json(path=path, params=params,
+                                expect_errors=expect_errors,
+                                headers=headers, extra_environ=extra_environ,
+                                status=status, method="patch",
+                                path_prefix=path_prefix)
+
+        print('Got here', response)
+        return response
 
     def delete(self, path, expect_errors=False, headers=None,
                extra_environ=None, status=None, path_prefix=PATH_PREFIX):
