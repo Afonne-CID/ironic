@@ -24,6 +24,7 @@ models.
 """
 
 import abc
+import asyncio
 import time
 
 from oslo_log import log as logging
@@ -41,22 +42,22 @@ from ironic.drivers import base
 pysnmp = importutils.try_import('pysnmp')
 if pysnmp:
     from pysnmp import error as snmp_error
-    from pysnmp import hlapi as snmp
+    import pysnmp.hlapi.asyncio as snmp_asyncio
 
     snmp_auth_protocols = {
-        'md5': snmp.usmHMACMD5AuthProtocol,
-        'sha': snmp.usmHMACSHAAuthProtocol,
-        'none': snmp.usmNoAuthProtocol,
+        'md5': snmp_asyncio.usmHMACMD5AuthProtocol,
+        'sha': snmp_asyncio.usmHMACSHAAuthProtocol,
+        'none': snmp_asyncio.usmNoAuthProtocol,
     }
 
     # available since pysnmp 4.4.1
     try:
         snmp_auth_protocols.update(
             {
-                'sha224': snmp.usmHMAC128SHA224AuthProtocol,
-                'sha256': snmp.usmHMAC192SHA256AuthProtocol,
-                'sha384': snmp.usmHMAC256SHA384AuthProtocol,
-                'sha512': snmp.usmHMAC384SHA512AuthProtocol,
+                'sha224': snmp_asyncio.usmHMAC128SHA224AuthProtocol,
+                'sha256': snmp_asyncio.usmHMAC192SHA256AuthProtocol,
+                'sha384': snmp_asyncio.usmHMAC256SHA384AuthProtocol,
+                'sha512': snmp_asyncio.usmHMAC384SHA512AuthProtocol,
 
             }
         )
@@ -65,20 +66,20 @@ if pysnmp:
         pass
 
     snmp_priv_protocols = {
-        'des': snmp.usmDESPrivProtocol,
-        '3des': snmp.usm3DESEDEPrivProtocol,
-        'aes': snmp.usmAesCfb128Protocol,
-        'aes192': snmp.usmAesCfb192Protocol,
-        'aes256': snmp.usmAesCfb256Protocol,
-        'none': snmp.usmNoPrivProtocol,
+        'des': snmp_asyncio.usmDESPrivProtocol,
+        '3des': snmp_asyncio.usm3DESEDEPrivProtocol,
+        'aes': snmp_asyncio.usmAesCfb128Protocol,
+        'aes192': snmp_asyncio.usmAesCfb192Protocol,
+        'aes256': snmp_asyncio.usmAesCfb256Protocol,
+        'none': snmp_asyncio.usmNoPrivProtocol,
     }
 
     # available since pysnmp 4.4.3
     try:
         snmp_priv_protocols.update(
             {
-                'aes192blmt': snmp.usmAesBlumenthalCfb192Protocol,
-                'aes256blmt': snmp.usmAesBlumenthalCfb256Protocol,
+                'aes192blmt': snmp_asyncio.usmAesBlumenthalCfb192Protocol,
+                'aes256blmt': snmp_asyncio.usmAesBlumenthalCfb256Protocol,
 
             }
         )
@@ -87,7 +88,7 @@ if pysnmp:
         pass
 
 else:
-    snmp = None
+    snmp_asyncio = None
     snmp_error = None
 
     snmp_auth_protocols = {
@@ -195,7 +196,7 @@ class SNMPClient(object):
                  user=None, auth_proto=None,
                  auth_key=None, priv_proto=None,
                  priv_key=None, context_engine_id=None, context_name=None):
-        if not snmp:
+        if not snmp_asyncio:
             raise exception.DriverLoadError(
                 driver=self.__class__.__name__,
                 reason=_("Unable to import python-pysnmp library")
@@ -217,7 +218,7 @@ class SNMPClient(object):
         self.context_engine_id = context_engine_id
         self.context_name = context_name or ''
 
-        self.snmp_engine = snmp.SnmpEngine()
+        self.snmp_engine = snmp_asyncio.SnmpEngine()
 
     def _get_auth(self, write_mode=False):
         """Return the authorization data for an SNMP request.
@@ -233,7 +234,7 @@ class SNMPClient(object):
             # NOTE(TheJulia): Ignore Bandit error B509 argument parsing as
             # the check is for a count of <3 arguments, however our line
             # wrapping causes the check to trigger.
-            return snmp.UsmUserData(  # nosec B509
+            return snmp_asyncio.UsmUserData(  # nosec B509
                 self.user,
                 authKey=self.auth_key,
                 authProtocol=self.auth_proto,
@@ -243,7 +244,7 @@ class SNMPClient(object):
 
         else:
             mp_model = 1 if self.version == SNMP_V2C else 0
-            return snmp.CommunityData(
+            return snmp_asyncio.CommunityData(
                 self.write_community if write_mode else self.read_community,
                 mpModel=mp_model
             )
@@ -259,7 +260,7 @@ class SNMPClient(object):
         # The transport target accepts timeout and retries parameters, which
         # default to 1 (second) and 5 respectively. These are deemed sensible
         # enough to allow for an unreliable network or slow device.
-        return snmp.UdpTransportTarget(
+        return snmp_asyncio.UdpTransportTarget(
             (self.address, self.port),
             timeout=CONF.snmp.udp_transport_timeout,
             retries=CONF.snmp.udp_transport_retries)
@@ -272,12 +273,12 @@ class SNMPClient(object):
         :raises: :class:`pysnmp.error.PySnmpError` if SNMP context data
             is bad.
         """
-        return snmp.ContextData(
+        return snmp_asyncio.ContextData(
             contextEngineId=self.context_engine_id,
             contextName=self.context_name
         )
 
-    def get(self, oid):
+    async def get(self, oid):
         """Use PySNMP to perform an SNMP GET operation on a single object.
 
         :param oid: The OID of the object to get.
@@ -285,32 +286,32 @@ class SNMPClient(object):
         :returns: The value of the requested object.
         """
         try:
-            snmp_gen = snmp.getCmd(self.snmp_engine,
-                                   self._get_auth(),
-                                   self._get_transport(),
-                                   self._get_context(),
-                                   snmp.ObjectType(snmp.ObjectIdentity(oid)))
+            error_indication, error_status, error_index, var_binds = await snmp_asyncio.getCmd(
+                self.snmp_engine,
+                self._get_auth(),
+                self._get_transport(),
+                self._get_context(),
+                snmp_asyncio.ObjectType(snmp_asyncio.ObjectIdentity(oid))
+            )
+
+            if error_indication:
+                # SNMP engine-level error.
+                raise exception.SNMPFailure(operation="GET",
+                                            error=error_indication)
+
+            if error_status:
+                # SNMP PDU error.
+                raise exception.SNMPFailure(operation="GET",
+                                            error=error_status.prettyPrint())
+
+            # We only expect a single value back
+            name, val = var_binds[0]
+            return val
 
         except snmp_error.PySnmpError as e:
             raise exception.SNMPFailure(operation="GET", error=e)
 
-        error_indication, error_status, error_index, var_binds = next(snmp_gen)
-
-        if error_indication:
-            # SNMP engine-level error.
-            raise exception.SNMPFailure(operation="GET",
-                                        error=error_indication)
-
-        if error_status:
-            # SNMP PDU error.
-            raise exception.SNMPFailure(operation="GET",
-                                        error=error_status.prettyPrint())
-
-        # We only expect a single value back
-        name, val = var_binds[0]
-        return val
-
-    def get_next(self, oid):
+    async def get_next(self, oid):
         """Use PySNMP to perform an SNMP GET NEXT operation on a table object.
 
         :param oid: The OID of the object to get.
@@ -318,38 +319,39 @@ class SNMPClient(object):
         :returns: A list of values of the requested table object.
         """
         try:
-            snmp_gen = snmp.nextCmd(self.snmp_engine,
-                                    self._get_auth(),
-                                    self._get_transport(),
-                                    self._get_context(),
-                                    snmp.ObjectType(snmp.ObjectIdentity(oid)),
-                                    lexicographicMode=False)
+            vals = []
+            async for (error_indication,
+                       error_status,
+                       error_index,
+                       var_binds) in snmp_asyncio.nextCmd(
+                           self.snmp_engine,
+                           self._get_auth(),
+                           self._get_transport(),
+                           self._get_context(),
+                           snmp_asyncio.ObjectType(snmp_asyncio.ObjectIdentity(oid)),
+                           lexicographicMode=False):
+
+                if error_indication:
+                    # SNMP engine-level error.
+                    raise exception.SNMPFailure(operation="GET_NEXT",
+                                                error=error_indication)
+
+                if error_status:
+                    # SNMP PDU error.
+                    raise exception.SNMPFailure(operation="GET_NEXT",
+                                                error=error_status.prettyPrint())
+
+                # this is not a table, but a table row
+                # e.g. 1-D array of tuples
+                _name, value = var_binds[0]
+                vals.append(value)
+
+            return vals
 
         except snmp_error.PySnmpError as e:
             raise exception.SNMPFailure(operation="GET_NEXT", error=e)
 
-        vals = []
-        for (error_indication, error_status, error_index,
-                var_binds) in snmp_gen:
-
-            if error_indication:
-                # SNMP engine-level error.
-                raise exception.SNMPFailure(operation="GET_NEXT",
-                                            error=error_indication)
-
-            if error_status:
-                # SNMP PDU error.
-                raise exception.SNMPFailure(operation="GET_NEXT",
-                                            error=error_status.prettyPrint())
-
-            # this is not a table, but a table row
-            # e.g. 1-D array of tuples
-            _name, value = var_binds[0]
-            vals.append(value)
-
-        return vals
-
-    def set(self, oid, value):
+    async def set(self, oid, value):
         """Use PySNMP to perform an SNMP SET operation on a single object.
 
         :param oid: The OID of the object to set.
@@ -357,28 +359,29 @@ class SNMPClient(object):
         :raises: SNMPFailure if an SNMP request fails.
         """
         try:
-            snmp_gen = snmp.setCmd(self.snmp_engine,
-                                   self._get_auth(write_mode=True),
-                                   self._get_transport(),
-                                   self._get_context(),
-                                   snmp.ObjectType(
-                                       snmp.ObjectIdentity(oid), value))
+            error_indication, error_status, error_index, var_binds = await snmp_asyncio.setCmd(
+                self.snmp_engine,
+                self._get_auth(write_mode=True),
+                self._get_transport(),
+                self._get_context(),
+                snmp_asyncio.ObjectType(snmp_asyncio.ObjectIdentity(oid), value)
+            )
+
+            if error_indication:
+                # SNMP engine-level error.
+                raise exception.SNMPFailure(operation="SET",
+                                            error=error_indication)
+
+            if error_status:
+                # SNMP PDU error.
+                raise exception.SNMPFailure(operation="SET",
+                                            error=error_status.prettyPrint())
 
         except snmp_error.PySnmpError as e:
             raise exception.SNMPFailure(operation="SET", error=e)
 
-        error_indication, error_status, error_index, var_binds = next(snmp_gen)
-
-        if error_indication:
-            # SNMP engine-level error.
-            raise exception.SNMPFailure(operation="SET",
-                                        error=error_indication)
-
-        if error_status:
-            # SNMP PDU error.
-            raise exception.SNMPFailure(operation="SET",
-                                        error=error_status.prettyPrint())
-
+    def run_coroutine(self, coroutine):
+        return self.loop.run_until_complete(coroutine)
 
 def _get_client(snmp_info):
     """Create and return an SNMP client object.
@@ -447,7 +450,7 @@ class SNMPDriverBase(object, metaclass=abc.ABCMeta):
         self.client = _get_client(snmp_info)
 
     @abc.abstractmethod
-    def _snmp_power_state(self):
+    async def _snmp_power_state(self):
         """Perform the SNMP request required to get the current power state.
 
         :raises: SNMPFailure if an SNMP request fails.
@@ -455,20 +458,20 @@ class SNMPDriverBase(object, metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def _snmp_power_on(self):
+    async def _snmp_power_on(self):
         """Perform the SNMP request required to set the power on.
 
         :raises: SNMPFailure if an SNMP request fails.
         """
 
     @abc.abstractmethod
-    def _snmp_power_off(self):
+    async def _snmp_power_off(self):
         """Perform the SNMP request required to set the power off.
 
         :raises: SNMPFailure if an SNMP request fails.
         """
 
-    def _snmp_wait_for_state(self, goal_state):
+    async def _snmp_wait_for_state(self, goal_state):
         """Wait for the power state of the PDU outlet to change.
 
         :param goal_state: The power state to wait for, one of
@@ -500,45 +503,45 @@ class SNMPDriverBase(object, metaclass=abc.ABCMeta):
         LOG.debug("power state '%s'", state["state"])
         return state["state"]
 
-    def power_state(self):
+    async def power_state(self):
         """Returns a node's current power state.
 
         :raises: SNMPFailure if an SNMP request fails.
         :returns: power state. One of :class:`ironic.common.states`.
         """
-        return self._snmp_power_state()
+        return await self._snmp_power_state()
 
-    def power_on(self):
+    async def power_on(self):
         """Set the power state to this node to ON.
 
         :raises: SNMPFailure if an SNMP request fails.
         :returns: power state. One of :class:`ironic.common.states`.
         """
-        time.sleep(CONF.snmp.power_action_delay)
-        self._snmp_power_on()
-        return self._snmp_wait_for_state(states.POWER_ON)
+        await asyncio.sleep(CONF.snmp.power_action_delay)
+        await self._snmp_power_on()
+        return await self._snmp_wait_for_state(states.POWER_ON)
 
-    def power_off(self):
+    async def power_off(self):
         """Set the power state to this node to OFF.
 
         :raises: SNMPFailure if an SNMP request fails.
         :returns: power state. One of :class:`ironic.common.states`.
         """
-        self._snmp_power_off()
-        time.sleep(CONF.snmp.power_action_delay)
-        return self._snmp_wait_for_state(states.POWER_OFF)
+        await self._snmp_power_off()
+        await asyncio.sleep(CONF.snmp.power_action_delay)
+        return await self._snmp_wait_for_state(states.POWER_OFF)
 
-    def power_reset(self):
+    async def power_reset(self):
         """Reset the power to this node.
 
         :raises: SNMPFailure if an SNMP request fails.
         :returns: power state. One of :class:`ironic.common.states`.
         """
-        power_result = self.power_off()
+        power_result = await self.power_off()
         if power_result != states.POWER_OFF:
             return states.ERROR
-        time.sleep(CONF.snmp.reboot_delay)
-        power_result = self.power_on()
+        await asyncio.sleep(CONF.snmp.reboot_delay)
+        power_result = await self.power_on()
         if power_result != states.POWER_ON:
             return states.ERROR
         return power_result
@@ -582,8 +585,8 @@ class SNMPDriverSimple(SNMPDriverBase):
         outlet = self.snmp_info['outlet']
         return self.oid_enterprise + self.oid_device + (outlet,)
 
-    def _snmp_power_state(self):
-        state = self.client.get(self.oid)
+    async def _snmp_power_state(self):
+        state = await self.client.get(self.oid)
 
         # Translate the state to an Ironic power state.
         if state == self.value_power_on:
@@ -600,13 +603,13 @@ class SNMPDriverSimple(SNMPDriverBase):
 
         return power_state
 
-    def _snmp_power_on(self):
-        value = snmp.Integer(self.value_power_on)
-        self.client.set(self.oid, value)
+    async def _snmp_power_on(self):
+        value = snmp_asyncio.Integer(self.value_power_on)
+        await self.client.set(self.oid, value)
 
-    def _snmp_power_off(self):
-        value = snmp.Integer(self.value_power_off)
-        self.client.set(self.oid, value)
+    async def _snmp_power_off(self):
+        value = snmp_asyncio.Integer(self.value_power_off)
+        await self.client.set(self.oid, value)
 
 
 class SNMPDriverAten(SNMPDriverSimple):
@@ -754,9 +757,9 @@ class SNMPDriverEatonPower(SNMPDriverBase):
         outlet = self.snmp_info['outlet']
         return self.oid_base + oid + (outlet,)
 
-    def _snmp_power_state(self):
+    async def _snmp_power_state(self):
         oid = self._snmp_oid(self.oid_status)
-        state = self.client.get(oid)
+        state = await self.client.get(oid)
 
         # Translate the state to an Ironic power state.
         if state in (self.status_on, self.status_pending_off):
@@ -773,15 +776,15 @@ class SNMPDriverEatonPower(SNMPDriverBase):
 
         return power_state
 
-    def _snmp_power_on(self):
+    async def _snmp_power_on(self):
         oid = self._snmp_oid(self.oid_poweron)
-        value = snmp.Integer(self.value_power_on)
-        self.client.set(oid, value)
+        value = snmp_asyncio.Integer(self.value_power_on)
+        await self.client.set(oid, value)
 
-    def _snmp_power_off(self):
+    async def _snmp_power_off(self):
         oid = self._snmp_oid(self.oid_poweroff)
-        value = snmp.Integer(self.value_power_off)
-        self.client.set(oid, value)
+        value = snmp_asyncio.Integer(self.value_power_off)
+        await self.client.set(oid, value)
 
 
 class SNMPDriverBaytechMRP27(SNMPDriverSimple):
@@ -1185,21 +1188,21 @@ class SNMPDriverAuto(SNMPDriverBase):
             {'system_id': system_id})
 
     @retry_on_outdated_cache
-    def _snmp_power_state(self):
-        current_power_state = self.driver._snmp_power_state()
+    async def _snmp_power_state(self):
+        current_power_state = await self.driver._snmp_power_state()
         return current_power_state
 
     @retry_on_outdated_cache
-    def _snmp_power_on(self):
-        return self.driver._snmp_power_on()
+    async def _snmp_power_on(self):
+        return await self.driver._snmp_power_on()
 
     @retry_on_outdated_cache
-    def _snmp_power_off(self):
-        return self.driver._snmp_power_off()
+    async def _snmp_power_off(self):
+        return await self.driver._snmp_power_off()
 
     @memoize
-    def _fetch_driver(self):
-        return self.client.get(self.SYS_OBJ_OID)
+    async def _fetch_driver(self):
+        return await self.client.get(self.SYS_OBJ_OID)
 
 
 # A dictionary of supported drivers keyed by snmp_driver attribute
@@ -1464,7 +1467,7 @@ class SNMPPower(base.PowerInterface):
         :returns: power state. One of :class:`ironic.common.states`.
         """
         driver = _get_driver(task.node)
-        power_state = driver.power_state()
+        power_state = driver.client.run_coroutine(driver.power_state())
         return power_state
 
     @task_manager.require_exclusive_lock
@@ -1494,9 +1497,9 @@ class SNMPPower(base.PowerInterface):
 
         driver = _get_driver(task.node)
         if pstate == states.POWER_ON:
-            state = driver.power_on()
+            state = driver.client.run_coroutine(driver.power_on())
         elif pstate == states.POWER_OFF:
-            state = driver.power_off()
+            state = driver.client.run_coroutine(driver.power_off())
         else:
             raise exception.InvalidParameterValue(_("set_power_state called "
                                                     "with invalid power "
@@ -1524,6 +1527,6 @@ class SNMPPower(base.PowerInterface):
                         {'timeout': timeout})
 
         driver = _get_driver(task.node)
-        state = driver.power_reset()
+        state = driver.client.run_coroutine(driver.power_reset())
         if state != states.POWER_ON:
             raise exception.PowerStateFailure(pstate=states.POWER_ON)
