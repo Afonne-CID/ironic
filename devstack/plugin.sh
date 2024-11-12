@@ -23,6 +23,11 @@ if is_service_enabled ir-api ir-cond; then
             cleanup_ironic_config_files
             downgrade_dnsmasq
 
+            if [[ "${IRONIC_DHCP_PROVIDER}" == "kea" ]]; then
+                install_kea
+                configure_kea
+            fi
+
         elif [[ "$2" == "post-config" ]]; then
         # stack/post-config - Called after the layer 1 and 2 services have been
         # configured. All configuration files for enabled services should exist

@@ -3573,6 +3573,141 @@ function downgrade_dnsmasq {
     fi
 }
 
+function create_service_file {
+    # Create service file if not existing
+    sudo systemctl stop "${service_name}" || true
+    SERVICE_FILE="/lib/systemd/system/kea-dhcp4-server.service"
+    if [[ ! -f "$SERVICE_FILE" ]]; then
+        sudo mkdir -p /run/kea
+        sudo tee "$SERVICE_FILE" << EOF
+[Unit]
+Description=Kea IPv4 DHCP daemon
+Documentation=man:kea-dhcp4(8)
+After=network.target
+
+[Service]
+Environment="KEA_PIDFILE_DIR=/run/kea"
+PIDFile=/run/kea/kea-dhcp4.pid
+ExecStart=/usr/local/sbin/kea-dhcp4 -c /etc/kea/kea-dhcp4.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+function _install_kea {
+    # clean up first to avoid conflicting with `apt` install Kea
+    sudo rm -rf /usr/local/lib/kea
+    sudo rm -rf /usr/local/lib/libkea*
+
+    sudo autoreconf -i
+    sudo ./configure
+    sudo make
+    sudo make install
+    sudo ldconfig
+
+    create_service_file
+
+    if [[ ! -d "/var/log/kea" ]]; then
+        sudo mkdir -p /var/log/kea
+    fi
+
+    sudo systemctl daemon-reload
+}
+
+function install_kea {
+    local kea_version=2.2.0
+
+    sudo wget https://downloads.isc.org/isc/kea/${kea_version}/kea-${kea_version}.tar.gz || { echo "Failed to download Kea"; exit 1; }
+    sudo tar xzf kea-${kea_version}.tar.gz
+    cd kea-${kea_version}
+
+    KEA_CTRL_AGENT_CONF="/etc/kea/kea-ctrl-agent.conf"
+    if [[ ! -f "$KEA_CTRL_AGENT_CONF" ]]; then
+        cp ./src/bin/keactrl/kea-ctrl-agent.conf "$KEA_CTRL_AGENT_CONF"
+    fi
+
+    if is_ubuntu; then
+        sudo apt remove --purge kea-*
+        sudo apt autoremove
+
+        sudo apt-get update
+        sudo apt-get install -y libboost-all-dev liblog4cplus-dev
+
+        _install_kea
+
+    elif is_fedora; then
+        sudo dnf remove --purge kea-*
+        sudo dnf autoremove
+        sudo dnf install -y boost-devel log4cplus-devel make autoconf automake libtool
+
+        _install_kea
+    fi
+}
+
+function configure_kea {
+    KEA_DHCP_CONF=${KEA_DHCP_CONF:-/etc/kea/kea-dhcp4.conf}
+    if [[ ! -f "$KEA_DHCP_CONF" ]]; then
+        sudo mkdir -p $(dirname $KEA_DHCP_CONF)
+
+        cat << EOF | sudo tee $KEA_DHCP_CONF
+{
+    "Dhcp4": {
+        "control-socket": {
+            "socket-type": "unix",
+            "socket-name": "/tmp/kea4-ctrl-socket"
+        },
+        "interfaces-config": {
+            "interfaces": [ "br-ex" ]
+        },
+        "lease-database": {
+            "type": "memfile",
+            "persist": true,
+            "name": "/var/lib/kea/dhcp4.leases"
+        },
+        "reservations-global": true,
+        "reservations": [],
+        "hooks-libraries": [
+            {
+                "library": "/usr/local/lib/kea/hooks/libdhcp_lease_cmds.so"
+            }
+        ],
+        "subnet4": [
+            {
+                "subnet": "${IRONIC_PROVISION_SUBNET_PREFIX}",
+                "pools": [ { "pool": "${IRONIC_PROVISION_ALLOCATION_POOL//,/ - }" } ],
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "${IRONIC_PROVISION_SUBNET_GATEWAY}"
+                    }
+                ]
+            }
+        ],
+        "valid-lifetime": 3600,
+        "renew-timer": 900,
+        "rebind-timer": 1800,
+        "loggers": [
+            {
+                "name": "kea-dhcp4",
+                "output_options": [
+                    {
+                        "output": "/var/log/kea/dhcp4.log"
+                    }
+                ],
+                "severity": "INFO"
+            }
+        ]
+    }
+}
+EOF
+
+    sudo systemctl enable kea-dhcp4-server
+    sudo systemctl start kea-dhcp4-server
+}
+
 # Restore xtrace + pipefail
 $_XTRACE_IRONIC
 $_PIPEFAIL_IRONIC
