@@ -931,3 +931,8 @@ class ImageChecksumFileReadFailure(InvalidImage):
     _msg_fmt = _("Failed to read the file from local storage "
                  "to perform a checksum operation.")
     code = http_client.SERVICE_UNAVAILABLE
+
+
+class DHCPConfigurationError(IronicException):
+    """Raised when there is an error in configuring DHCP."""
+    _msg_fmt = _("DHCP configuration error: %(reason)s")

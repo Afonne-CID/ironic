@@ -38,6 +38,7 @@ from ironic.conf import inspector
 from ironic.conf import inventory
 from ironic.conf import ipmi
 from ironic.conf import irmc
+from ironic.conf import kea
 from ironic.conf import metrics
 from ironic.conf import metrics_statsd
 from ironic.conf import molds
@@ -75,6 +76,7 @@ inspector.register_opts(CONF)
 inventory.register_opts(CONF)
 ipmi.register_opts(CONF)
 irmc.register_opts(CONF)
+kea.register_opts(CONF)
 metrics.register_opts(CONF)
 metrics_statsd.register_opts(CONF)
 molds.register_opts(CONF)
