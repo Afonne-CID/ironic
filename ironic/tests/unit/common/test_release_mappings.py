@@ -100,8 +100,8 @@ class ReleaseMappingsTestCase(base.TestCase):
         # initialize them with the version 1.0 instead.
         # NodeBase is also excluded as it is covered by Node.
         exceptions = set(['NodeTag', 'ConductorHardwareInterfaces',
-                          'NodeTrait', 'DeployTemplateStep',
-                          'NodeBase', 'RunbookStep'])
+                          'NodeTrait', 'DeployTemplateStep', 'NodeBase',
+                          'RunbookStep'])
         model_names -= exceptions
         # NodeTrait maps to two objects
         model_names |= set(['Trait', 'TraitList'])

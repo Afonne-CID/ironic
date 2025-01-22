@@ -1062,3 +1062,13 @@ class ServiceRegistrationFailure(IronicException):
 class Unauthorized(IronicException):
     code = http_client.UNAUTHORIZED
     headers = {'WWW-Authenticate': 'Basic realm="Baremetal API"'}
+
+
+class InspectionRuleAlreadyExists(Conflict):
+    """Rule requested already exists in the database."""
+    _msg_fmt = _("A rule with UUID %(uuid)s already exists.")
+
+
+class InspectionRuleNotFound(NotFound):
+    """The requested rule was not found."""
+    _msg_fmt = _("Rule %(rule)s could not be found.")
