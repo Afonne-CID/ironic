@@ -1020,7 +1020,7 @@ node_policies = [
         name='baremetal:node:inventory:get',
         check_str=SYSTEM_OR_OWNER_READER,
         scope_types=['system', 'project'],
-        description='Retrieve introspection data for a node.',
+        description='Retrieve inspection data for a node.',
         operations=[
             {'path': '/nodes/{node_ident}/inventory', 'method': 'GET'},
         ],
@@ -2009,6 +2009,64 @@ runbook_policies = [
     )
 ]
 
+rule_policies = [
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:get',
+        check_str=SYSTEM_READER,
+        scope_types=['system', 'project'],
+        description='Get inspection rule(s)',
+        operations=[{'path': '/rules', 'method': 'GET'},
+                    {'path': '/rules/{rule_id}', 'method': 'GET'}],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:list',
+        check_str=API_READER,
+        scope_types=['system', 'project'],
+        description='Get inspection rule(s)',
+        operations=[
+            {'path': '/rules', 'method': 'GET'}
+        ],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:list_all',
+        check_str=SYSTEM_READER,
+        scope_types=['system', 'project'],
+        description='Retrieve all inspection_rule records',
+        operations=[
+            {'path': '/inspection_rules', 'method': 'GET'}
+        ],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:create',
+        check_str=SYSTEM_ADMIN,
+        scope_types=['system', 'project'],
+        description='Create inspection rule',
+        operations=[{'path': '/rules', 'method': 'POST'}],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:update',
+        check_str=SYSTEM_ADMIN,
+        scope_types=['system', 'project'],
+        description='Update an inspection rule',
+        operations=[{'path': '/rules/{rule_id}', 'method': 'PATCH'}],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:delete',
+        check_str=SYSTEM_ADMIN,
+        scope_types=['system', 'project'],
+        description='Delete an inspection rule',
+        operations=[{'path': '/rules', 'method': 'DELETE'},
+                    {'path': '/rules/{rule_id}', 'method': 'DELETE'}],
+    ),
+    policy.DocumentedRuleDefault(
+        name='baremetal:inspection_rule:delete_all',
+        check_str=SYSTEM_ADMIN,
+        scope_types=['system', 'project'],
+        description='Delete all inspection rules',
+        operations=[{'path': '/rules', 'method': 'DELETE'}],
+    ),
+]
+
 
 def list_policies():
     policies = itertools.chain(
@@ -2026,6 +2084,7 @@ def list_policies():
         event_policies,
         deploy_template_policies,
         runbook_policies,
+        rule_policies,
     )
     return policies
 
