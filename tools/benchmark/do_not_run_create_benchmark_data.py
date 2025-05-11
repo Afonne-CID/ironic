@@ -66,6 +66,12 @@ def _create_test_nodes():
                                'memory': 32,
                                'cats': i,
                                'meowing': True}
+
+        if not i % 2:
+            new_node.conductor_group = 'group1'
+        else:
+            new_node.conductor_group = 'group2'
+
         new_node.create()
         _create_test_node_ports(new_node)
         delta = time.time() - checkin

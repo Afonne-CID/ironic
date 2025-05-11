@@ -134,6 +134,105 @@ def _assess_db_and_object_performance_ports():
           (delta, count))
     print('Ports table is roughly %s bytes of JSON.\n' % tbl_size)
 
+def _assess_db_port_filtering_by_conductor_group():
+    print('Phase - Assess Port Filtering by Conductor Group')
+    _add_a_line()
+    dbapi = db_api.get_instance()
+    ctx = context.get_admin_context()
+
+    node_list = node.Node.list(ctx)
+    total_nodes = len(node_list)
+    nodes_with_groups = 0
+    conductor_groups = {}
+
+    for node_obj in node_list:
+        group = node_obj.conductor_group
+        if group:
+            nodes_with_groups += 1
+            conductor_groups[group] = conductor_groups.get(group, 0) + 1
+
+    all_ports_query_start = time.time()
+    all_ports = dbapi.get_port_list()
+    all_ports_query_end = time.time()
+
+    total_ports = len(all_ports)
+
+    all_ports_query_time = _calculate_delta(all_ports_query_start,
+                                            all_ports_query_end)
+
+    print('\nBaseline: Retrieved all %s ports in %.4f seconds' % (
+        total_ports, all_ports_query_time))
+    print('Processing rate: %.2f ports/second' %
+          (total_ports / all_ports_query_time if all_ports_query_time > 0
+           else 0))
+
+    ports_per_node = {}
+    for port_obj in all_ports:
+        ports_per_node[port_obj.node_id] = ports_per_node.get(
+            port_obj.node_id, 0) + 1
+
+    avg_ports_per_node = sum(ports_per_node.values()) / len(ports_per_node) \
+        if ports_per_node else 0
+
+    print('\nPort distribution statistics:')
+    print('Total nodes: %s, Total ports: %s' % (total_nodes, total_ports))
+    print('Average ports per node: %.2f' % avg_ports_per_node)
+    print('Nodes with conductor groups: %s (%.2f%%) of %s' %
+          (nodes_with_groups, (nodes_with_groups / total_nodes * 100)
+           if total_nodes else 0, total_nodes))
+
+    # Test port filtering by conductor group
+    if conductor_groups:
+        print('\nConductor group statistics:')
+        for test_group, count in sorted(
+            conductor_groups.items(), key=lambda x: x[1], reverse=True):
+
+            percentage = round(count / total_nodes * 100, 2
+                               ) if total_nodes else 0
+            print('Group "%s": %s nodes (%.2f%%)' % (
+                test_group, count, percentage))
+
+        # Calculate expected ports per group
+        expected_ports_per_group = {}
+        for port_obj in all_ports:
+            node_obj = dbapi.get_node_by_id(port_obj.node_id)
+            group = node_obj.conductor_group
+            if group:
+                expected_ports_per_group[group] = expected_ports_per_group.get(
+                    group, 0) + 1
+
+        print('\nPerformance when filtering ports by conductor group:')
+        for test_group in conductor_groups:
+            runs = 3
+            times = []
+            port_counts = []
+
+            for i in range(runs):
+                query_start = time.time()
+                filters = {'conductor_groups': [test_group]}
+                filtered_ports = dbapi.get_port_list(filters=filters)
+                query_end = time.time()
+
+                times.append(_calculate_delta(query_start, query_end))
+                port_counts.append(len(filtered_ports))
+
+            avg_time = sum(times) / len(times)
+            port_count = port_counts[0]
+            expected_count = expected_ports_per_group.get(test_group, 0)
+
+            print('Group "%s":' % test_group)
+            print('  * Expected ports: %s' % expected_count)
+            print('  * Actual ports returned: %s (%.2f%% of total)' %
+                  (port_count, (port_count / total_ports * 100)
+                   if total_ports else 0))
+            print('  * Times for each run (seconds): %s' %
+                  ', '.join(['%.4f' % t for t in times]))
+            print('  * Average time: %.4f seconds' % avg_time)
+            print('  * Processing rate: %.2f ports/second' %
+                  (port_count / avg_time if avg_time > 0 else 0))
+    else:
+        print('\nNo conductor groups found in nodes.')
+
 
 @mock.patch('ironic.api.request')  # noqa patch needed for the object model
 @mock.patch.object(metrics_utils, 'get_metrics_logger', lambda *_: mock.Mock)
@@ -298,13 +397,14 @@ def _report_conductors():
 def main():
     service.prepare_command()
     CONF.set_override('debug', False)
-    _assess_db_performance()
-    _assess_db_and_object_performance()
-    _assess_db_object_and_api_performance()
-    _assess_db_performance_ports()
-    _assess_db_and_object_performance_ports()
-    _assess_db_object_and_api_performance_ports()
-    _report_conductors()
+    # _assess_db_performance()
+    # _assess_db_and_object_performance()
+    # _assess_db_object_and_api_performance()
+    # _assess_db_performance_ports()
+    # _assess_db_and_object_performance_ports()
+    # _assess_db_object_and_api_performance_ports()
+    # _report_conductors()
+    _assess_db_port_filtering_by_conductor_group()
 
 
 if __name__ == '__main__':
